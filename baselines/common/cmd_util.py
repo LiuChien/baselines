@@ -1,5 +1,5 @@
 """
-Helpers for scripts like run_atari.py.
+Helpers for scripts like run.py.
 """
 
 import os
@@ -23,7 +23,7 @@ def make_vec_env(env_id, env_type, num_env, seed,
                  start_index=0,
                  reward_scale=1.0,
                  flatten_dict_observations=True,
-                 gamestate=None):
+                 gamestate=None):   # gamestate is only used in retro games
     """
     Create a wrapped, monitored SubprocVecEnv for Atari and MuJoCo.
     """
@@ -142,6 +142,7 @@ def common_arg_parser():
     parser.add_argument('--num_env', help='Number of environment copies being run in parallel. When not specified, set to number of cpus for Atari, and to 1 for Mujoco', default=None, type=int)
     parser.add_argument('--reward_scale', help='Reward scale factor. Default: 1.0', default=1.0, type=float)
     parser.add_argument('--save_path', help='Path to save trained model to', default=None, type=str)
+    parser.add_argument('--log_dir', help='Path to save tensorboard log', default=None, type=str)
     parser.add_argument('--save_video_interval', help='Save video every x steps (0 = disabled)', default=0, type=int)
     parser.add_argument('--save_video_length', help='Length of recorded video. Default: 200', default=200, type=int)
     parser.add_argument('--play', default=False, action='store_true')
@@ -163,7 +164,7 @@ def parse_unknown_args(args):
     """
     Parse arguments not consumed by arg parser into a dicitonary
     """
-    retval = {}
+    retval = {}     # return value
     preceded_by_key = False
     for arg in args:
         if arg.startswith('--'):

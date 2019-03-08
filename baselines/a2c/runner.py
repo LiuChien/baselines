@@ -25,7 +25,7 @@ class Runner(AbstractEnvRunner):
         for n in range(self.nsteps):
             # Given observations, take action and value (V(s))
             # We already have self.obs because Runner superclass run self.obs[:] = env.reset() on init
-            actions, values, states, _ = self.model.step(self.obs, S=self.states, M=self.dones)
+            actions, values, states, _ = self.model.step(self.obs, S=self.states, M=self.dones)     # model.step() return actions & predict value
 
             # Append the experiences
             mb_obs.append(np.copy(self.obs))
@@ -35,7 +35,7 @@ class Runner(AbstractEnvRunner):
 
             # Take actions in env and look the results
             obs, rewards, dones, _ = self.env.step(actions)
-            self.states = states
+            self.states = states # ??? why env.step doesn't return the next state
             self.dones = dones
             self.obs = obs
             mb_rewards.append(rewards)

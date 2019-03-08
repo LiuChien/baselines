@@ -58,7 +58,7 @@ class PdType(object):
 
 class CategoricalPdType(PdType):
     def __init__(self, ncat):
-        self.ncat = ncat
+        self.ncat = ncat    # n catagories
     def pdclass(self):
         return CategoricalPd
     def pdfromlatent(self, latent_vector, init_scale=1.0, init_bias=0.0):
@@ -159,7 +159,7 @@ class CategoricalPd(Pd):
         return tf.argmax(self.logits, axis=-1)
 
     @property
-    def mean(self):
+    def mean(self):     # take this as input of diversity
         return tf.nn.softmax(self.logits)
     def neglogp(self, x):
         # return tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits, labels=x)

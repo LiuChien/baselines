@@ -1,3 +1,12 @@
+'''
+1. Set argparse
+2. Train model
+3. Save model
+4. Demo
+
+'''
+
+
 import sys
 import multiprocessing
 import os.path as osp
@@ -16,7 +25,7 @@ from importlib import import_module
 from baselines.common.vec_env.vec_normalize import VecNormalize
 
 try:
-    from mpi4py import MPI
+    from mpi4py import MPI      # Message Passing Interface
 except ImportError:
     MPI = None
 
@@ -52,13 +61,13 @@ _game_envs['retro'] = {
 
 
 def train(args, extra_args):
-    env_type, env_id = get_env_type(args.env)
+    env_type, env_id = get_env_type(args.env)   # env_id is just for print out
     print('env_type: {}'.format(env_type))
 
-    total_timesteps = int(args.num_timesteps)
+    total_timesteps = int(args.num_timesteps)   # Training step
     seed = args.seed
 
-    learn = get_learn_function(args.alg)
+    learn = get_learn_function(args.alg)    # A2C_diversity.learn
     alg_kwargs = get_learn_function_defaults(args.alg, env_type)
     alg_kwargs.update(extra_args)
 
@@ -74,10 +83,11 @@ def train(args, extra_args):
 
     print('Training {} on {}:{} with arguments \n{}'.format(args.alg, env_type, env_id, alg_kwargs))
 
-    model = learn(
+    model = learn(      # Do training stuff and return the tuned model
         env=env,
         seed=seed,
         total_timesteps=total_timesteps,
+        log_dir=args.log_dir,
         **alg_kwargs
     )
 
@@ -85,25 +95,28 @@ def train(args, extra_args):
 
 
 def build_env(args):
+    # Call multiprocess
     ncpu = multiprocessing.cpu_count()
     if sys.platform == 'darwin': ncpu //= 2
     nenv = args.num_env or ncpu
     alg = args.alg
     seed = args.seed
 
+    # get actual env name
     env_type, env_id = get_env_type(args.env)
 
+    # build multiple envs accorading to nenv & env name
     if env_type in {'atari', 'retro'}:
         if alg == 'deepq':
             env = make_env(env_id, env_type, seed=seed, wrapper_kwargs={'frame_stack': True})
         elif alg == 'trpo_mpi':
             env = make_env(env_id, env_type, seed=seed)
         else:
-            frame_stack_size = 4
+            frame_stack_size = 4    # A2C goes here
             env = make_vec_env(env_id, env_type, nenv, seed, gamestate=args.gamestate, reward_scale=args.reward_scale)
             env = VecFrameStack(env, frame_stack_size)
 
-    else:
+    else:   # curiosity will go here (?)
        config = tf.ConfigProto(allow_soft_placement=True,
                                intra_op_parallelism_threads=1,
                                inter_op_parallelism_threads=1)
@@ -186,14 +199,15 @@ def parse_cmdline_kwargs(args):
     return {k: parse(v) for k,v in parse_unknown_args(args).items()}
 
 
-
 def main(args):
     # configure logger, disable logging in child MPI processes (with rank > 0)
 
-    arg_parser = common_arg_parser()
-    args, unknown_args = arg_parser.parse_known_args(args)
-    extra_args = parse_cmdline_kwargs(unknown_args)
+    # Set parser
+    arg_parser = common_arg_parser()    # Some argparse
+    args, unknown_args = arg_parser.parse_known_args(args)  # unknown_args is undefined args in common_arg_parser
+    extra_args = parse_cmdline_kwargs(unknown_args)     # transform extra_args
 
+    # Import extra model, so far not important
     if args.extra_import is not None:
         import_module(args.extra_import)
 
@@ -204,22 +218,25 @@ def main(args):
         logger.configure(format_strs=[])
         rank = MPI.COMM_WORLD.Get_rank()
 
-    model, env = train(args, extra_args)
+    # Train model
+    model, env = train(args, extra_args)    # Do training stuff and then return env & model 
     env.close()
 
+    # Save model, doesn't save by default
     if args.save_path is not None and rank == 0:
         save_path = osp.expanduser(args.save_path)
         model.save(save_path)
 
+    # Demo
     if args.play:
         logger.log("Running trained model")
         env = build_env(args)
-        obs = env.reset()
+        obs = env.reset()   # env.reset() return observation
 
         state = model.initial_state if hasattr(model, 'initial_state') else None
         dones = np.zeros((1,))
 
-        while True:
+        while True:     # No break?
             if state is not None:
                 actions, _, state, _ = model.step(obs,S=state, M=dones)
             else:

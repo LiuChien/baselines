@@ -28,13 +28,13 @@ class Model(object):
         save/load():
         - Save load the model
     """
-    def __init__(self, policy, env, nsteps,
+    def __init__(self, policy, env, nsteps, log_dir=None,
             ent_coef=0.01, vf_coef=0.5, max_grad_norm=0.5, lr=7e-4,
             alpha=0.99, epsilon=1e-5, total_timesteps=int(80e6), lrschedule='linear'):
 
-        sess = tf_util.get_session()
-        nenvs = env.num_envs
-        nbatch = nenvs*nsteps
+        sess = tf_util.get_session()    # create session
+        nenvs = env.num_envs            # env includes multiple env
+        nbatch = nenvs*nsteps           # batch size
 
 
         with tf.variable_scope('a2c_model', reuse=tf.AUTO_REUSE):
@@ -65,6 +65,16 @@ class Model(object):
 
         loss = pg_loss - entropy*ent_coef + vf_loss * vf_coef
 
+        # Tensorboard
+        tf.summary.scalar('Total loss', loss)
+        tf.summary.scalar('Policy loss', pg_loss)
+        tf.summary.scalar('Entropy', entropy * ent_coef)
+        tf.summary.scalar('Value loss', vf_loss * vf_coef)
+        tf.summary.scalar('Reward', tf.reduce_mean(R))
+        merged = tf.summary.merge_all()
+        print('log_dir:', log_dir)
+        writer = tf.summary.FileWriter(log_dir, sess.graph)
+
         # Update parameters using loss
         # 1. Get the model parameters
         params = find_trainable_variables("a2c_model")
@@ -85,7 +95,7 @@ class Model(object):
 
         lr = Scheduler(v=lr, nvalues=total_timesteps, schedule=lrschedule)
 
-        def train(obs, states, rewards, masks, actions, values):
+        def train(obs, states, rewards, masks, actions, values, update):
             # Here we calculate advantage A(s,a) = R + yV(s') - V(s)
             # rewards = R + yV(s')
             advs = rewards - values
@@ -96,25 +106,28 @@ class Model(object):
             if states is not None:
                 td_map[train_model.S] = states
                 td_map[train_model.M] = masks
-            policy_loss, value_loss, policy_entropy, _ = sess.run(
-                [pg_loss, vf_loss, entropy, _train],
+            policy_loss, value_loss, policy_entropy, summary, _ = sess.run(
+                [pg_loss, vf_loss, entropy, merged, _train],
                 td_map
             )
+
+            writer.add_summary(summary, update)
+
             return policy_loss, value_loss, policy_entropy
 
 
-        self.train = train
+        self.train = train      # HIGHLIGHT
         self.train_model = train_model
         self.step_model = step_model
         self.step = step_model.step
         self.value = step_model.value
         self.initial_state = step_model.initial_state
-        self.save = functools.partial(tf_util.save_variables, sess=sess)
+        self.save = functools.partial(tf_util.save_variables, sess=sess)    # HIGHLIGHT
         self.load = functools.partial(tf_util.load_variables, sess=sess)
         tf.global_variables_initializer().run(session=sess)
 
 
-def learn(
+def learn(      # Call Model inside the learn function
     network,
     env,
     seed=None,
@@ -130,6 +143,7 @@ def learn(
     gamma=0.99,
     log_interval=100,
     load_path=None,
+    log_dir=None,
     **network_kwargs):
 
     '''
@@ -146,6 +160,7 @@ def learn(
 
 
     env:                RL environment. Should implement interface similar to VecEnv (baselines.common/vec_env) or be wrapped with DummyVecEnv (baselines.common/vec_env/dummy_vec_env.py)
+    # I have to wrapped env
 
 
     seed:               seed to make random number sequence in the alorightm reproducible. By default is None which means seed from system noise generator (not reproducible)
@@ -158,6 +173,7 @@ def learn(
     vf_coef:            float, coefficient in front of value function loss in the total loss function (default: 0.5)
 
     ent_coef:           float, coeffictiant in front of the policy entropy in the total loss function (default: 0.01)
+    # Remaining coef is policy gradient loss
 
     max_gradient_norm:  float, gradient is clipped to have global L2 norm no more than this value (default: 0.5)
 
@@ -181,20 +197,26 @@ def learn(
 
 
 
-    set_global_seeds(seed)
+    set_global_seeds(seed)  # Existing seed makes experiment reproducable
 
     # Get the nb of env
     nenvs = env.num_envs
+
+    # ?? Policy
     policy = build_policy(env, network, **network_kwargs)
 
     # Instantiate the model object (that creates step_model and train_model)
-    model = Model(policy=policy, env=env, nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef,
+    model = Model(policy=policy, env=env, nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef, log_dir=log_dir,
         max_grad_norm=max_grad_norm, lr=lr, alpha=alpha, epsilon=epsilon, total_timesteps=total_timesteps, lrschedule=lrschedule)
+    # model define loss, whereas policy define forward propagation.
+
+
+    # Load trained model
     if load_path is not None:
         model.load(load_path)
 
     # Instantiate the runner object
-    runner = Runner(env, model, nsteps=nsteps, gamma=gamma)
+    runner = Runner(env, model, nsteps=nsteps, gamma=gamma)     # Runner get training example batches
 
     # Calculate the batch_size
     nbatch = nenvs*nsteps
@@ -205,8 +227,11 @@ def learn(
     for update in range(1, total_timesteps//nbatch+1):
         # Get mini batch of experiences
         obs, states, rewards, masks, actions, values = runner.run()
+        # value generate by model.step
+        # reward comes from env
 
-        policy_loss, value_loss, policy_entropy = model.train(obs, states, rewards, masks, actions, values)
+        # model.train() update parameters one time
+        policy_loss, value_loss, policy_entropy = model.train(obs, states, rewards, masks, actions, values, update)
         nseconds = time.time()-tstart
 
         # Calculate the fps (frame per second)
@@ -215,7 +240,7 @@ def learn(
             # Calculates if value function is a good predicator of the returns (ev > 1)
             # or if it's just worse than predicting nothing (ev =< 0)
             ev = explained_variance(values, rewards)
-            logger.record_tabular("nupdates", update)
+            logger.record_tabular("nupdates", update)   # from baselines import logger
             logger.record_tabular("total_timesteps", update*nbatch)
             logger.record_tabular("fps", fps)
             logger.record_tabular("policy_entropy", float(policy_entropy))

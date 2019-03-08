@@ -123,11 +123,10 @@ def build_policy(env, policy_network, value_network=None,  normalize_observation
         network_type = policy_network
         policy_network = get_network_builder(network_type)(**policy_kwargs)
 
-    def policy_fn(nbatch=None, nsteps=None, sess=None, observ_placeholder=None):
+    def policy_fn(nbatch=None, nsteps=None, sess=None, observ_placeholder=None, reuse_placeholder=False):
         ob_space = env.observation_space
 
-        X = observ_placeholder if observ_placeholder is not None else observation_placeholder(ob_space, batch_size=nbatch)
-
+        X = observ_placeholder if observ_placeholder is not None else observation_placeholder(ob_space, batch_size=nbatch, reuse=reuse_placeholder)
         extra_tensors = {}
 
         if normalize_observations and X.dtype == tf.float32:

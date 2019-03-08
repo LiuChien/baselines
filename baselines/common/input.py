@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 from gym.spaces import Discrete, Box, MultiDiscrete
 
-def observation_placeholder(ob_space, batch_size=None, name='Ob'):
+def observation_placeholder(ob_space, batch_size=None, name='Ob', reuse=False):
     '''
     Create placeholder to feed observations into of the size appropriate to the observation space
 
@@ -27,6 +27,9 @@ def observation_placeholder(ob_space, batch_size=None, name='Ob'):
     dtype = ob_space.dtype
     if dtype == np.int8:
         dtype = np.uint8
+
+    if reuse:
+        return tf.get_default_graph().get_tensor_by_name('a2c_model/Ob_1:0')
 
     return tf.placeholder(shape=(batch_size,) + ob_space.shape, dtype=dtype, name=name)
 
